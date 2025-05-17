@@ -1,12 +1,15 @@
 //API
 
-import express from "express";
+import express, { request } from "express";
+import cors from "cors";
 import { pool } from './db.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const app = express();
+
+app.use(cors({ origin: 'http://localhost:3000' }));
 app.use(express.json());
 
 //POST /api/mqtt-data
@@ -66,14 +69,55 @@ app.get('/api/mqtt-data', async (req, res) => {
     console.error('DB Error:', err);
     res.status(500).json({ error: err });
   }
+});
 
-	/*pool.execute(sql, params, (err, results) => {
-		if (err) {
-			console.error('❌ Error retrieving data:', err);
-			return res.status(500).json({ error: 'Database error' });
-		}
-		res.json(results);
-	});*/
+app.get('/api/summary', async (req, res) => {
+	console.log('⚙️  Incoming API request:', req.query);
+	const { deviceId, startDate, endDate } = req.query;
+
+	let sql = `select count(distinct deviceid) as no_devices , count(*) as no_messages , count(distinct topic) as no_topic, 
+		count(distinct JSON_EXTRACT(md.message,'$.position.protocol')) as no_protocol, 
+		max(JSON_EXTRACT(md.message,'$.position.attributes.hours')) / 3600000  as totalhours, 
+		max(JSON_EXTRACT(md.message,'$.position.attributes.totalDistance')) / 1000  as totalDistance, 
+		max(JSON_EXTRACT(md.message,'$.position.attributes.odometer')) / 1000  as odometer, 
+		max(JSON_EXTRACT(md.message,'$.position.speed'))  as maxspeed ,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.rpm'))  as rpm,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.coolantTemp'))  as temp,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.airPressure'))  as airPressure,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.engineLoad'))  as engineLoad,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.airTemp'))  as airTemp,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.airFlow'))  as airFlow,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.fuelConsumption'))  as Consumption,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.throttle'))  as throttle,
+		max(JSON_EXTRACT(md.message,'$.position.attributes.power'))  as power
+		FROM mqtt_data md WHERE 1=1`;
+	const params = [];
+
+	if (deviceId) {
+			sql += " AND deviceid = ?";
+			params.push(deviceId);
+	}
+
+	if (startDate) {
+			sql += ' AND receivedtime >= ?' ;
+			params.push(startDate);
+	}
+
+	if (endDate) {
+			sql += ' AND receivedtime <= ?';
+			params.push(endDate);
+	}
+
+	console.log('sql:',sql);
+
+	try {
+    const [result] = await pool.execute(sql, params);
+    res.json(result);
+  } 
+	catch (err) {
+    console.error('DB Error:', err);
+    res.status(500).json({ error: err });
+  }
 });
 
 
